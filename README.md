@@ -47,15 +47,15 @@ pip install -r requirements.txt
 
 
 # install third-party modules (this will take a while)
-pip install thirdparty/lietorch
-pip install thirdparty/pytorch_scatter
+pip install --no-build-isolation thirdparty/lietorch
+pip install --no-build-isolation thirdparty/pytorch_scatter
 
 # install droid-backends
-pip install -e .
+pip install --no-build-isolation -e .
 
 cd ../..
 
-pip install torch-scatter -f https://data.pyg.org/whl/torch-2.7.1+cu128.html
+pip install --no-build-isolation torch-scatter -f https://data.pyg.org/whl/torch-2.7.1+cu128.html
 ```
 
 ## Prepare data
