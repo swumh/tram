@@ -34,10 +34,8 @@ class Droid:
 
         # visualizer
         if not self.disable_vis:
-            # from visualization import droid_visualization
-            from vis_headless import droid_visualization
-            print('Using headless ...')
-            self.visualizer = Process(target=droid_visualization, args=(self.video, '.'))
+            from visualizer.droid_visualizer import visualization_fn
+            self.visualizer = Process(target=visualization_fn, args=(self.video, None))
             self.visualizer.start()
 
         # post processor - fill in poses for non-keyframes
@@ -47,6 +45,7 @@ class Droid:
     def load_weights(self, weights):
         """ load trained model weights """
 
+        print(weights)
         self.net = DroidNet()
         state_dict = OrderedDict([
             (k.replace("module.", ""), v) for (k, v) in torch.load(weights).items()])
@@ -59,44 +58,29 @@ class Droid:
         self.net.load_state_dict(state_dict)
         self.net.to("cuda:0").eval()
 
-    def track(self, tstamp, image, depth=None, intrinsics=None, mask=None):
+    def track(self, tstamp, image, depth=None, intrinsics=None):
         """ main thread - update map """
 
         with torch.no_grad():
             # check there is enough motion
-            self.filterx.track(tstamp, image, depth, intrinsics, mask)
+            self.filterx.track(tstamp, image, depth, intrinsics)
 
             # local bundle adjustment
             self.frontend()
 
-            # global bundle adjustment
-            # self.backend()
-
-    def terminate(self, stream=None, backend=True):
+    def terminate(self, stream=None):
         """ terminate the visualization process, return poses [t, q] """
 
         del self.frontend
 
-        if backend:
-            torch.cuda.empty_cache()
-            # print("#" * 32)
-            self.backend(7)
+        torch.cuda.empty_cache()
+        print("#" * 32)
+        self.backend(7)
 
-            torch.cuda.empty_cache()
-            # print("#" * 32)
-            self.backend(12)
+        torch.cuda.empty_cache()
+        print("#" * 32)
+        self.backend(12)
 
         camera_trajectory = self.traj_filler(stream)
         return camera_trajectory.inv().data.cpu().numpy()
-    
-    def compute_error(self):
-        """ compute slam reprojection error """
-
-        del self.frontend
-
-        torch.cuda.empty_cache()
-        self.backend(12)
-
-        return self.backend.errors[-1]
-        
 

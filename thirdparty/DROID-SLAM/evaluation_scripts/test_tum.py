@@ -10,17 +10,18 @@ import os
 import glob 
 import time
 import argparse
+from pathlib import Path
 
 import torch.nn.functional as F
 from droid import Droid
-
+from droid_async import DroidAsync
 
 def show_image(image):
     image = image.permute(1, 2, 0).cpu().numpy()
     cv2.imshow('image', image / 255.0)
     cv2.waitKey(1)
 
-def image_stream(datapath, image_size=[320, 512]):
+def image_stream(datapath):
     """ image generator """
 
     fx, fy, cx, cy = 517.3, 516.5, 318.6, 255.3
@@ -31,6 +32,7 @@ def image_stream(datapath, image_size=[320, 512]):
     # read all png images in folder
     images_list = sorted(glob.glob(os.path.join(datapath, 'rgb', '*.png')))[::2]
     
+    data_list = []
     for t, imfile in enumerate(images_list):
         image = cv2.imread(imfile)
         ht0, wd0, _ = image.shape
@@ -38,7 +40,7 @@ def image_stream(datapath, image_size=[320, 512]):
         image = cv2.resize(image, (320+32, 240+16))
         image = torch.from_numpy(image).permute(2,0,1)
 
-        intrinsics = torch.as_tensor([fx, fy, cx, cy]).cuda()
+        intrinsics = torch.as_tensor([fx, fy, cx, cy])
         intrinsics[0] *= image.shape[2] / 640.0
         intrinsics[1] *= image.shape[1] / 480.0
         intrinsics[2] *= image.shape[2] / 640.0
@@ -49,7 +51,9 @@ def image_stream(datapath, image_size=[320, 512]):
         intrinsics[3] -= 8
         image = image[:, 8:-8, 16:-16]
 
-        yield t, image[None], intrinsics
+        data_list.append((t, image[None], intrinsics))
+
+    return data_list
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -59,18 +63,26 @@ if __name__ == '__main__':
     parser.add_argument("--image_size", default=[240, 320])
     parser.add_argument("--disable_vis", action="store_true")
 
-    parser.add_argument("--beta", type=float, default=0.6)
-    parser.add_argument("--filter_thresh", type=float, default=1.75)
+    parser.add_argument("--beta", type=float, default=0.3)
+    parser.add_argument("--filter_thresh", type=float, default=1.5)
     parser.add_argument("--warmup", type=int, default=12)
-    parser.add_argument("--keyframe_thresh", type=float, default=2.25)
+    parser.add_argument("--keyframe_thresh", type=float, default=2.0)
     parser.add_argument("--frontend_thresh", type=float, default=12.0)
     parser.add_argument("--frontend_window", type=int, default=25)
     parser.add_argument("--frontend_radius", type=int, default=2)
     parser.add_argument("--frontend_nms", type=int, default=1)
 
-    parser.add_argument("--backend_thresh", type=float, default=15.0)
+    parser.add_argument("--backend_thresh", type=float, default=20.0)
     parser.add_argument("--backend_radius", type=int, default=2)
     parser.add_argument("--backend_nms", type=int, default=3)
+
+    parser.add_argument("--upsample", action="store_true")
+    
+    parser.add_argument("--asynchronous", action="store_true")
+    parser.add_argument("--frontend_device", type=str, default="cuda")
+    parser.add_argument("--backend_device", type=str, default="cuda")
+    parser.add_argument("--motion_damping", type=float, default=0.5)
+
     args = parser.parse_args()
 
     args.stereo = False
@@ -79,17 +91,18 @@ if __name__ == '__main__':
     print("Running evaluation on {}".format(args.datapath))
     print(args)
 
-    droid = Droid(args)
-    time.sleep(5)
+    droid = DroidAsync(args) if args.asynchronous else Droid(args)
+    scene = Path(args.datapath).name
 
     tstamps = []
-    for (t, image, intrinsics) in tqdm(image_stream(args.datapath)):
+    images = image_stream(args.datapath)
+
+    for (t, image, intrinsics) in tqdm(images, desc=scene):
         if not args.disable_vis:
             show_image(image)
         droid.track(t, image, intrinsics=intrinsics)
 
-
-    traj_est = droid.terminate(image_stream(args.datapath))
+    traj_est = droid.terminate(images)
 
     ### run evaluation ###
 

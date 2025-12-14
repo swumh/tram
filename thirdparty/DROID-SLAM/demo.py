@@ -13,8 +13,8 @@ import argparse
 
 from torch.multiprocessing import Process
 from droid import Droid
+from droid_async import DroidAsync
 
-from pycocotools import mask as masktool
 import torch.nn.functional as F
 
 
@@ -25,7 +25,8 @@ def show_image(image):
 
 def image_stream(imagedir, calib, stride):
     """ image generator """
-    # calib = np.loadtxt(calib, delimiter=" ")
+
+    calib = np.loadtxt(calib, delimiter=" ")
     fx, fy, cx, cy = calib[:4]
 
     K = np.eye(3)
@@ -34,11 +35,10 @@ def image_stream(imagedir, calib, stride):
     K[1,1] = fy
     K[1,2] = cy
 
-    image_list = sorted(glob.glob(f'{imagedir}/*.jpg'))
-    image_list = image_list[::stride]
+    image_list = sorted(os.listdir(imagedir))[::stride]
 
     for t, imfile in enumerate(image_list):
-        image = cv2.imread(imfile)
+        image = cv2.imread(os.path.join(imagedir, imfile))
         if len(calib) > 4:
             image = cv2.undistort(image, K, calib[4:])
 
@@ -57,25 +57,23 @@ def image_stream(imagedir, calib, stride):
         yield t, image[None], intrinsics
 
 
-def save_reconstruction(droid, reconstruction_path):
+def save_reconstruction(droid, save_path):
 
-    from pathlib import Path
-    import random
-    import string
+    if hasattr(droid, "video2"):
+        video = droid.video2
+    else:
+        video = droid.video
 
-    t = droid.video.counter.value
-    tstamps = droid.video.tstamp[:t].cpu().numpy()
-    images = droid.video.images[:t].cpu().numpy()
-    disps = droid.video.disps_up[:t].cpu().numpy()
-    poses = droid.video.poses[:t].cpu().numpy()
-    intrinsics = droid.video.intrinsics[:t].cpu().numpy()
+    t = video.counter.value
+    save_data = {
+        "tstamps": video.tstamp[:t].cpu(),
+        "images": video.images[:t].cpu(),
+        "disps": video.disps_up[:t].cpu(),
+        "poses": video.poses[:t].cpu(),
+        "intrinsics": video.intrinsics[:t].cpu()
+    }
 
-    Path("reconstructions/{}".format(reconstruction_path)).mkdir(parents=True, exist_ok=True)
-    np.save("reconstructions/{}/tstamps.npy".format(reconstruction_path), tstamps)
-    np.save("reconstructions/{}/images.npy".format(reconstruction_path), images)
-    np.save("reconstructions/{}/disps.npy".format(reconstruction_path), disps)
-    np.save("reconstructions/{}/poses.npy".format(reconstruction_path), poses)
-    np.save("reconstructions/{}/intrinsics.npy".format(reconstruction_path), intrinsics)
+    torch.save(save_data, save_path)
 
 
 if __name__ == '__main__':
@@ -103,6 +101,10 @@ if __name__ == '__main__':
     parser.add_argument("--backend_radius", type=int, default=2)
     parser.add_argument("--backend_nms", type=int, default=3)
     parser.add_argument("--upsample", action="store_true")
+    parser.add_argument("--asynchronous", action="store_true")
+    parser.add_argument("--frontend_device", type=str, default="cuda")
+    parser.add_argument("--backend_device", type=str, default="cuda")
+    
     parser.add_argument("--reconstruction_path", help="path to saved reconstruction")
     args = parser.parse_args()
 
@@ -125,11 +127,11 @@ if __name__ == '__main__':
 
         if droid is None:
             args.image_size = [image.shape[2], image.shape[3]]
-            droid = Droid(args)
+            droid = DroidAsync(args) if args.asynchronous else Droid(args)
         
         droid.track(t, image, intrinsics=intrinsics)
 
+    traj_est = droid.terminate(image_stream(args.imagedir, args.calib, args.stride))
+    
     if args.reconstruction_path is not None:
         save_reconstruction(droid, args.reconstruction_path)
-
-    traj_est = droid.terminate(image_stream(args.imagedir, args.calib, args.stride))

@@ -1,5 +1,20 @@
 import os
 import numpy as np
+
+# Compatibility for chumpy with numpy>=1.24 where legacy aliases were removed.
+# These aliases are imported by chumpy when smplx is loaded.
+_numpy_compat_aliases = {
+    "bool": bool,
+    "int": int,
+    "float": float,
+    "complex": complex,
+    "object": object,
+    "unicode": str,
+    "str": str,
+}
+for _alias, _target in _numpy_compat_aliases.items():
+    if not hasattr(np, _alias):
+        setattr(np, _alias, _target)
 import torch
 from torch.nn import functional as F
 import contextlib

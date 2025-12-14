@@ -20,33 +20,69 @@ class DroidBackend:
         self.backend_thresh = args.backend_thresh
         self.backend_radius = args.backend_radius
         self.backend_nms = args.backend_nms
-        self.errors = []
-        
+
     @torch.no_grad()
-    def __call__(self, steps=12):
+    def __call__(self, steps=12, normalize=True):
         """ main update """
 
         t = self.video.counter.value
-        if not self.video.stereo and not torch.any(self.video.disps_sens):
-             self.video.normalize()
+        if normalize:
+            if not self.video.stereo and not torch.any(self.video.disps_sens):
+                self.video.normalize()
 
         graph = FactorGraph(self.video, self.update_op, corr_impl="alt", max_factors=16*t, upsample=self.upsample)
 
-        graph.add_proximity_factors(rad=self.backend_radius, 
-                                    nms=self.backend_nms, 
-                                    thresh=self.backend_thresh, 
+        graph.add_proximity_factors(rad=self.backend_radius,
+                                    nms=self.backend_nms,
+                                    thresh=self.backend_thresh,
                                     beta=self.beta)
 
         graph.update_lowmem(steps=steps)
-        self.errors.append(self.cal_err(graph))
         graph.clear_edges()
         self.video.dirty[:t] = True
 
-        return
-    
-    def cal_err(self, graph):
-        coord, _ = graph.video.reproject(graph.ii, graph.jj)
-        diff = graph.target - coord
-        err = diff.norm(dim=-1).mean().item()
-        return err
 
+class DroidAsyncBackend:
+    def __init__(self, net, video, args, max_age = 7):
+        self.video = video
+        self.update_op = net.update
+        self.max_age = max_age
+
+        # global optimization window
+        self.t0 = 0
+        self.t1 = 0
+
+        self.upsample = args.upsample
+        self.beta = args.beta
+        self.backend_thresh = args.backend_thresh
+        self.backend_radius = args.backend_radius
+        self.backend_nms = args.backend_nms
+
+        self.graph = FactorGraph(
+            self.video,
+            self.update_op,
+            corr_impl="alt",
+            max_factors=-1,
+            upsample=self.upsample,
+        )
+
+    @torch.no_grad()
+    def __call__(self, steps=12, normalize=True):
+        """main update"""
+
+        t = self.video.counter.value
+        if normalize:
+            if not self.video.stereo and not torch.any(self.video.disps_sens):
+                self.video.normalize()
+
+        self.graph.add_proximity_factors(
+            rad=self.backend_radius,
+            nms=self.backend_nms,
+            thresh=self.backend_thresh,
+            beta=self.beta,
+        )
+
+        self.graph.update_lowmem(steps=steps, use_inactive=True)
+        self.graph.rm_factors(self.graph.age > self.max_age, store=True)
+
+        self.video.dirty[:t] = True

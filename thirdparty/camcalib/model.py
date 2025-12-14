@@ -206,7 +206,7 @@ class CameraRegressorNetwork(nn.Module):
 
     def load_ckpt(self, ckpt):
         if isinstance(ckpt, str):
-            ckpt = torch.load(ckpt)
+            ckpt = torch.load(ckpt, weights_only=False)
             
         state_dict = ckpt['state_dict']
         model = load_pretrained_model(self, state_dict, remove_lightning=True, strict=True)

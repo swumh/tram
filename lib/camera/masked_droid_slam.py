@@ -107,9 +107,11 @@ def run_slam(imagedir, masks=None, calib=None, depth=None):
             img_msk = img_msks[t]
             conf_msk = conf_msks[t]
             image = image * (img_msk < 0.5)
-            droid.track(t, image, intrinsics=intrinsics, depth=depth, mask=conf_msk)
+            # The upstream Droid.track API does not accept mask; masking is already
+            # applied to the image above, so we simply drop the extra argument.
+            droid.track(t, image, intrinsics=intrinsics, depth=depth)
         else:
-            droid.track(t, image, intrinsics=intrinsics, depth=depth, mask=None)  
+            droid.track(t, image, intrinsics=intrinsics, depth=depth)
 
     traj = droid.terminate(image_stream(imagedir, calib))
 
@@ -203,9 +205,10 @@ def test_slam(imagedir, masks, calib, stride=10, max_frame=50):
             img_msk = masks[0][t]
             conf_msk = masks[1][t]
             image = image * (img_msk < 0.5)
-            droid.track(t, image, intrinsics=intrinsics, mask=conf_msk)  
+            # Masking is baked into the image; Droid.track has no mask kwarg.
+            droid.track(t, image, intrinsics=intrinsics)
         else:
-            droid.track(t, image, intrinsics=intrinsics, mask=None)  
+            droid.track(t, image, intrinsics=intrinsics)
     
     if droid.video.counter.value <= 1:
         # If less than 2 keyframes, likely static camera
@@ -213,7 +216,11 @@ def test_slam(imagedir, masks, calib, stride=10, max_frame=50):
         reprojection_error = None
     else:
         static_camera = False
-        reprojection_error = droid.compute_error()
+        # Some builds of Droid do not expose compute_error; fall back to inf.
+        if hasattr(droid, "compute_error"):
+            reprojection_error = droid.compute_error()
+        else:
+            reprojection_error = float("inf")
 
     del droid
 

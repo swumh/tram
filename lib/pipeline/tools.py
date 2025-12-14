@@ -99,7 +99,8 @@ def detect_segment_track(imgfiles, out_path, thresh=0.5, min_size=None,
                 masks = masks.cpu().squeeze(1)
                 mask = masks.sum(dim=0)
         else:
-            mask = np.zeros_like(mask)
+            # no detections: use an empty mask with image spatial dims
+            mask = np.zeros(img_cv2.shape[:2], dtype=np.uint8)
 
         ### --- DEVA ---
         if len(boxes)>0 and (boxes[:, -1] > 0.80).sum()>0:
@@ -116,7 +117,8 @@ def detect_segment_track(imgfiles, out_path, thresh=0.5, min_size=None,
                             imgpath, result_saver, t, save_vos)
             
         ### Record full mask and boxes
-        mask_bit = masktool.encode(np.asfortranarray(mask > 0))
+        mask_np = mask.cpu().numpy() if torch.is_tensor(mask) else mask
+        mask_bit = masktool.encode(np.asfortranarray(mask_np > 0))
         masks_.append(mask_bit)
         boxes_.append(boxes)
 

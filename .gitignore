@@ -45,3 +45,11 @@ ipython_config.py
 
 # pyenv
 .python-version
+
+# not important
+GVHMR/
+GMR/
+pytorch3d/
+
+# ignore thirdparty DROID-SLAM and you should install it manually
+thirdparty/DROID-SLAM/

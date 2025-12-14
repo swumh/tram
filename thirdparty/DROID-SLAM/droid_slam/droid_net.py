@@ -108,7 +108,7 @@ class UpdateModule(nn.Module):
         self.gru = ConvGRU(128, 128+128+64)
         self.agg = GraphAgg()
 
-    def forward(self, net, inp, corr, flow=None, ii=None, jj=None, mask=None):
+    def forward(self, net, inp, corr, flow=None, ii=None, jj=None):
         """ RaftSLAM update operator """
 
         batch, num, ch, ht, wd = net.shape
@@ -129,10 +129,6 @@ class UpdateModule(nn.Module):
         ### update variables ###
         delta = self.delta(net).view(*output_dim)
         weight = self.weight(net).view(*output_dim)
-
-        # print('Update')
-        # print('delta:', delta.shape)    # [1,1,2,64,48]
-        # print('weight:', weight.shape)  # [1,1,2,64,48]
 
         delta = delta.permute(0,1,3,4,2)[...,:2].contiguous()
         weight = weight.permute(0,1,3,4,2)[...,:2].contiguous()

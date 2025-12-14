@@ -8,11 +8,18 @@ from factor_graph import FactorGraph
 from droid_net import DroidNet
 import geom.projective_ops as pops
 
+from functools import partial
+
+if torch.__version__.startswith("2"):
+    autocast = partial(torch.autocast, device_type="cuda")
+else:
+    autocast = torch.cuda.amp.autocast
+
 
 class PoseTrajectoryFiller:
     """ This class is used to fill in non-keyframe poses """
 
-    def __init__(self, net, video, device="cuda:0"):
+    def __init__(self, net, video, device="cuda"):
         
         # split net modules
         self.cnet = net.cnet
@@ -27,7 +34,7 @@ class PoseTrajectoryFiller:
         self.MEAN = torch.as_tensor([0.485, 0.456, 0.406], device=self.device)[:, None, None]
         self.STDV = torch.as_tensor([0.229, 0.224, 0.225], device=self.device)[:, None, None]
         
-    @torch.amp.autocast('cuda', enabled=True)
+    @autocast(enabled=True)
     def __feature_encoder(self, image):
         """ features for correlation volume """
         return self.fnet(image)
@@ -36,16 +43,16 @@ class PoseTrajectoryFiller:
         """ fill operator """
 
         tt = torch.as_tensor(tstamps, device="cuda")
-        images = torch.stack(images, 0)
+        images = torch.stack(images, 0).cuda()
         intrinsics = torch.stack(intrinsics, 0)
         inputs = images[:,:,[2,1,0]].to(self.device) / 255.0
         
         ### linear pose interpolation ###
-        N = self.video.counter.value  # number of keyframes
-        M = len(tstamps)              # 16 frames to fill
+        N = self.video.counter.value
+        M = len(tstamps)
 
-        ts = self.video.tstamp[:N]        # tstamp of keyframes
-        Ps = SE3(self.video.poses[:N])    # pose of keyframes
+        ts = self.video.tstamp[:N]
+        Ps = SE3(self.video.poses[:N])
 
         t0 = torch.as_tensor([ts[ts<=t].shape[0] - 1 for t in tstamps])
         t1 = torch.where(t0<N-1, t0+1, t0)
@@ -63,18 +70,10 @@ class PoseTrajectoryFiller:
 
         self.video.counter.value += M
         self.video[N:N+M] = (tt, images[:,0], Gs.data, 1, None, intrinsics / 8.0, fmap)
-        # print('t0:', t0, 't1:', t1)
-        # print('tt:', tt.shape, '\n', tt)
-
-        # self.video.append(tstamp, image[0], Id, 1.0, depth, intrinsics / 8.0, gmap, net[0,0], inp[0,0], mask)
-        # self.video.append(tstamp, image[0], None, None, depth, intrinsics / 8.0, gmap, net[0], inp[0], mask)
 
         graph = FactorGraph(self.video, self.update)
         graph.add_factors(t0.cuda(), torch.arange(N, N+M).cuda())
         graph.add_factors(t1.cuda(), torch.arange(N, N+M).cuda())
-        # print('graph.ii:', graph.ii)
-        # print('graph.jj:', graph.jj)
-        # print()
 
         for itr in range(6):
             graph.update(N, N+M, motion_only=True)

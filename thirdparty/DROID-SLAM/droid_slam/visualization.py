@@ -62,6 +62,7 @@ def droid_visualization(video, device="cuda:0"):
     droid_visualization.ix = 0
 
     droid_visualization.filter_thresh = 0.005
+    droid_visualization.is_initialized = False
 
     def increase_filter(vis):
         droid_visualization.filter_thresh *= 2
@@ -73,43 +74,14 @@ def droid_visualization(video, device="cuda:0"):
         with droid_visualization.video.get_lock():
             droid_visualization.video.dirty[:droid_visualization.video.counter.value] = True
 
-    #file dialog based pointcloud export added#
-    def export_pointcloud(vis):
-        gui.Application.instance.initialize()
-        window = gui.Application.instance.create_window("Export", 350, 600)
-
-        def _on_filedlg_cancel():
-            window.close_dialog()
-            window.close()
-            gui.Application.instance.quit()
-
-        def _on_filedlg_done(path):
-            pcd_export(path)
-            window.close_dialog()
-            gui.Application.instance.quit()
-
-        def exec_file_dialog():
-            filedlg = gui.FileDialog(gui.FileDialog.SAVE, "Select file", window.theme)
-
-            filedlg.add_filter(".ply .xyz .pcd", "PointCloud (.xyz .ply .pcd)")
-            filedlg.add_filter("", "All files")
-            filedlg.set_on_cancel(_on_filedlg_cancel)
-            filedlg.set_on_done(_on_filedlg_done)
-            window.show_dialog(filedlg)
-
-        def pcd_export(path):
-            print("\nExporting pointcloud as", path)
-            final_pcd = o3d.geometry.PointCloud()
-            for p in droid_visualization.points.items():
-                final_pcd += p[1] 
-            
-            o3d.io.write_point_cloud(path, final_pcd, write_ascii=False)
-            #vis.capture_depth_point_cloud("/home/bertuser/droidslam_export.ply")
-        
-        exec_file_dialog()
-
     def animation_callback(vis):
         cam = vis.get_view_control().convert_to_pinhole_camera_parameters()
+
+        if not droid_visualization.is_initialized:
+            extrinsics = np.eye(4)
+            extrinsics[2, 3] = 2.0
+            cam.extrinsic = extrinsics
+            droid_visualization.is_initialized = True
 
         with torch.no_grad():
 
@@ -169,8 +141,7 @@ def droid_visualization(video, device="cuda:0"):
                 droid_visualization.points[ix] = point_actor
 
             # hack to allow interacting with vizualization during inference
-            if len(droid_visualization.cameras) >= droid_visualization.warmup:
-                cam = vis.get_view_control().convert_from_pinhole_camera_parameters(cam)
+            cam = vis.get_view_control().convert_from_pinhole_camera_parameters(cam)
 
             droid_visualization.ix += 1
             vis.poll_events()

@@ -97,13 +97,16 @@ def visualize_tram(seq_folder, floor_scale=2, bin_size=-1, max_faces_per_bin=300
     for i in tqdm(range(len(imgfiles))):
         img = cv2.imread(imgfiles[i])[:,:,::-1]
         
-        verts_list = track_verts[i]
-        if len(verts_list)>0:
-            verts_list = torch.stack(track_verts[i])[:,None].to('cuda')
+        cur_verts = track_verts[i]
+        if len(cur_verts)>0:
+            verts_list = torch.stack(cur_verts)[:,None].to('cuda')
             verts_list -= offset
             
             tid = track_tid[i]
             verts_colors = torch.stack([colors[t] for t in tid]).to('cuda')
+        else:
+            verts_list = []
+            verts_colors = []
 
         faces = renderer.faces.clone().squeeze(0)
         cameras, lights = renderer.create_camera_from_cv(view_cam_R[[i]], 

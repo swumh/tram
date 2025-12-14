@@ -113,7 +113,7 @@ def compute_distance_matrix_flow(poses, disps, intrinsics):
 
     N = poses.shape[1]
     
-    ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N), indexing='ij')
+    ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N))
     ii = ii.reshape(-1).cuda()
     jj = jj.reshape(-1).cuda()
 
@@ -153,7 +153,7 @@ def compute_distance_matrix_flow2(poses, disps, intrinsics, beta=0.4):
 
     N = poses.shape[1]
     
-    ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N), indexing='ij')
+    ii, jj = torch.meshgrid(torch.arange(N), torch.arange(N))
     ii = ii.reshape(-1)
     jj = jj.reshape(-1)
 
