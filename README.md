@@ -1,3 +1,11 @@
+# Support for 50 Series GPUs  
+> [!NOTE] : Currently, only the [Run demo on videos](#run-demo-on-videos) section is supported \
+See the [detailed installation guide](#installation) for step-by-step instructions. 
+
+## test environment: 
+  Ubuntu 24.04.3 LTS \
+  5060ti 16G \
+  cu128 torch2.7.1
 ## :railway_car: TRAM 
 Official implementation for the paper: \
 **TRAM: Global Trajectory and Motion of 3D Humans from in-the-wild Videos**  
@@ -27,9 +35,27 @@ bash install.sh
 ```
 3. Compile DROID-SLAM. If you encountered difficulty in this step, please refer to its [official release](https://github.com/princeton-vl/DROID-SLAM) for more info. In this project, DROID is modified to support masking. 
 ```Bash
-cd thirdparty/DROID-SLAM
-python setup.py install
+cd thirdparty
+
+# Clone the repo using the --recursive flag
+git clone --recursive https://github.com/princeton-vl/DROID-SLAM.git
+
+cd DROID-SLAM
+
+# install requirements (tested up to torch 2.7)
+pip install -r requirements.txt
+
+
+# install third-party modules (this will take a while)
+pip install thirdparty/lietorch
+pip install thirdparty/pytorch_scatter
+
+# install droid-backends
+pip install -e .
+
 cd ../..
+
+pip install torch-scatter -f https://data.pyg.org/whl/torch-2.7.1+cu128.html
 ```
 
 ## Prepare data
